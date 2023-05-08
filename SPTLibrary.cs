@@ -65,21 +65,62 @@ namespace SpeechToText
                         stopRecognition.TrySetResult(0);
                     };
 
-                    var result = await recognizer.RecognizeOnceAsync();
-                    MessageBox.Show(result.Text);
-                    //// Starts continuous recognition. Uses StopContinuousRecognitionAsync() to stop recognition.
-                    //await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(false);
+                    //var result = await recognizer.RecognizeOnceAsync();
+                    //MessageBox.Show(result.Text);
+                    // Starts continuous recognition. Uses StopContinuousRecognitionAsync() to stop recognition.
+                    await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(false);
 
-                    //// Waits for completion.
-                    //// Use Task.WaitAny to keep the task rooted.
-                    //Task.WaitAny(new[] { stopRecognition.Task });
+                    // Waits for completion.
+                    // Use Task.WaitAny to keep the task rooted.
+                    Task.WaitAny(new[] { stopRecognition.Task });
 
-                    //// Stops recognition.
-                    //await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
+                    // Stops recognition.
+                    await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
                 }
             }
         }
 
+        /// <summary>
+        /// Recognizes a WAV stream object using the specified subscription key and region.
+        /// </summary>
+        /// <param name="SubscriptionKey">The subscription key.</param>
+        /// <param name="region">The region.</param>
+        /// <param name="WavStreamObject">The WAV stream object.</param>
+        /// <returns>The speech recognition result.</returns>
+        public static async Task<SpeechRecognitionResult> RecognizeOneLineStream(string SubscriptionKey, string region, Stream WavStreamObject)
+        {
+            var config = SpeechConfig.FromSubscription(SubscriptionKey, region);
+            BinaryReader reader = new BinaryReader(WavStreamObject);
+            using (var audioInput = Helper.OpenWavFile(reader))
+            {
+                using (var recognizer = new SpeechRecognizer(config, audioInput))
+                {
+                    recognizer.Recognized += Recognizer_Recognized;
+
+                    var result = await recognizer.RecognizeOnceAsync();
+                    return result;
+                }
+            }
+        }
+
+        public static async Task RecognizeLongStream(string SubscriptionKey, string region, Stream WavStreamObject, EventHandler<SpeechRecognitionEventArgs> Recognizer_Recognized)
+        {
+            var config = SpeechConfig.FromSubscription(SubscriptionKey, region);
+
+            var stopRecognition = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            BinaryReader reader = new BinaryReader(WavStreamObject);
+            using (var audioInput = Helper.OpenWavFile(reader))
+            {
+                using (var recognizer = new SpeechRecognizer(config, audioInput))
+                {
+                    recognizer.Recognized += Recognizer_Recognized;
+                    await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(false);
+                    Task.WaitAny(new[] { stopRecognition.Task });
+                    await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
+                }
+            }
+        }
+         
         async static Task FromStreamChristina(SpeechConfig speechConfig)
         {
             var stopRecognition = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -187,7 +228,7 @@ namespace SpeechToText
             if (e.Result.Reason == ResultReason.RecognizedSpeech)
             {
                 Console.WriteLine($"RECOGNIZED: Text={e.Result.Text}");
-                if (e.Result.Text.Length > 0) MessageBox.Show(e.Result.Text);
+
             }
             else if (e.Result.Reason == ResultReason.NoMatch)
             {

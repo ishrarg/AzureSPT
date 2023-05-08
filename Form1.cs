@@ -17,9 +17,34 @@ namespace SpeechToText
         {
 
 
-            await SPTLibrary.RecognitionWithPullAudioStreamAsync();
+        }
+        private void Recognizer_Recognized(object? sender, SpeechRecognitionEventArgs e)
+        {
 
+            if (e.Result.Reason == ResultReason.RecognizedSpeech)
+            {
+                Console.WriteLine($"RECOGNIZED: Text={e.Result.Text}");
+                if (e.Result.Text.Length > 0)
+                {
+                    txtLongText.Invoke(() => { txtLongText.Text += e.Result.Text; });
+                }
+            }
+            else if (e.Result.Reason == ResultReason.NoMatch)
+            {
+                Console.WriteLine($"NOMATCH: Speech could not be recognized.");
+            }
         }
 
+        private async void button1_Click(object sender, EventArgs e)
+        {
+            textBox1.Text = "";
+            txtLongText.Text = "";
+            string filename = "harvard.wav";
+            var result = await SPTLibrary.RecognizeOneLineStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename));
+            textBox1.Text = result.Text;
+
+            await SPTLibrary.RecognizeLongStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename), Recognizer_Recognized);
+
+        }
     }
 }
