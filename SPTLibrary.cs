@@ -11,7 +11,7 @@ namespace SpeechToText
 {
     public static class SPTLibrary
     {
-        static string filename = "User2.wav";
+        static string filename = "harvard.wav";
         async static Task FromFile(SpeechConfig speechConfig)
         {
             using var audioConfig = AudioConfig.FromWavFileInput(filename);
@@ -20,8 +20,11 @@ namespace SpeechToText
             Console.WriteLine($"RECOGNIZED: Text={result.Text}");
         }
 
-        public static async Task RecognitionWithPullAudioStreamAsync()
+        public static List<SpeechRecognitionResult> Results = new List<SpeechRecognitionResult>();
+        public static async Task<SpeechRecognitionCustomResult> RecognitionWithPullAudioStreamAsync()
         {
+            SpeechRecognitionCustomResult result = new SpeechRecognitionCustomResult();
+            Results.Clear();
             // Creates an instance of a speech config with specified subscription key and service region.
             // Replace with your own subscription key and service region (e.g., "westus").
             var config = SpeechConfig.FromSubscription("ae04421fc7ff4e6a837a8c4f53197300", "eastus");
@@ -36,8 +39,19 @@ namespace SpeechToText
                 using (var recognizer = new SpeechRecognizer(config, audioInput))
                 {
                     recognizer.Recognizing += Recognizer_Recognizing;
-                    recognizer.Recognized += Recognizer_Recognized;
+                    
+                    recognizer.Recognized += (s, e) =>
+                    {
+                        result.Reason = e.Result.Reason;
+                        result.Text += e.Result.Text;
+                        result.TotalDuration += e.Result.Duration;
 
+                        if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                        {
+                            Results.Add(e.Result);
+                        }
+                    };
+                    recognizer.Recognized += Recognizer_Recognized;
 
                     recognizer.Canceled += (s, e) =>
                     {
@@ -78,6 +92,7 @@ namespace SpeechToText
                     await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
                 }
             }
+            return result;
         }
 
         /// <summary>
@@ -103,7 +118,7 @@ namespace SpeechToText
             }
         }
 
-        public static async Task RecognizeLongStream(string SubscriptionKey, string region, Stream WavStreamObject, EventHandler<SpeechRecognitionEventArgs> Recognizer_Recognized)
+        public static async Task<List<SpeechRecognitionResult>> RecognizeLongStream(string SubscriptionKey, string region, Stream WavStreamObject, EventHandler<SpeechRecognitionEventArgs> Recognizer_Recognized)
         {
             var config = SpeechConfig.FromSubscription(SubscriptionKey, region);
 
@@ -113,14 +128,97 @@ namespace SpeechToText
             {
                 using (var recognizer = new SpeechRecognizer(config, audioInput))
                 {
+                    recognizer.Recognized += (s, e) =>
+                    {
+                        if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                        {
+                            Results.Add(e.Result);
+                        }
+                    };
                     recognizer.Recognized += Recognizer_Recognized;
-                    await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(false);
+                   await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(true);
                     Task.WaitAny(new[] { stopRecognition.Task });
                     await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
                 }
             }
+            return Results;
+
         }
-         
+
+        public class SpeechRecognitionCustomResult
+        {
+            public string Text { get; set; }
+            public ResultReason Reason { get; set; }
+            public TimeSpan TotalDuration { get; set; }
+        }
+        public static async Task<SpeechRecognitionCustomResult> RecognizeLongByteArray(string SubscriptionKey, string region, byte[] myByteArray
+            , EventHandler<SpeechRecognitionEventArgs> Recognizer_Recognized)
+        {
+            var config = SpeechConfig.FromSubscription(SubscriptionKey, region);
+
+            SpeechRecognitionCustomResult result = new SpeechRecognitionCustomResult();
+
+            var stopRecognition = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            MemoryStream WavStreamObject = new MemoryStream(myByteArray);
+
+            BinaryReader reader = new BinaryReader(WavStreamObject);
+            using (var audioInput = Helper.OpenWavFile(reader))
+            {
+                using (var recognizer = new SpeechRecognizer(config, audioInput))
+                {
+                    recognizer.Recognized += (s, e) =>
+                    {
+                        result.Reason = e.Result.Reason;
+                        result.Text += e.Result.Text;
+                        result.TotalDuration += e.Result.Duration;
+
+                        if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                        {
+                            Results.Add(e.Result);
+                        }
+                    };
+                    recognizer.Canceled += (s, e) =>
+                    {
+                        Console.WriteLine($"CANCELED: Reason={e.Reason}");
+
+                        if (e.Reason == CancellationReason.Error)
+                        {
+                            Console.WriteLine($"CANCELED: ErrorCode={e.ErrorCode}");
+                            Console.WriteLine($"CANCELED: ErrorDetails={e.ErrorDetails}");
+                            Console.WriteLine($"CANCELED: Did you update the subscription info?");
+                        }
+
+                        stopRecognition.TrySetResult(0);
+                    };
+
+                    recognizer.SessionStarted += (s, e) =>
+                    {
+                        Console.WriteLine("\nSession started event.");
+                    };
+
+                    recognizer.SessionStopped += (s, e) =>
+                    {
+                        Console.WriteLine("\nSession stopped event.");
+                        Console.WriteLine("\nStop recognition.");
+                        stopRecognition.TrySetResult(0);
+                    };
+                    recognizer.Recognized += Recognizer_Recognized;
+                    await recognizer.StartContinuousRecognitionAsync().ConfigureAwait(false);
+
+                    // Waits for completion.
+                    // Use Task.WaitAny to keep the task rooted.
+                    Task.WaitAny(new[] { stopRecognition.Task });
+
+                    // Stops recognition.
+                    await recognizer.StopContinuousRecognitionAsync().ConfigureAwait(false);
+                }
+            }
+            
+            return result;
+
+        }
+
         async static Task FromStreamChristina(SpeechConfig speechConfig)
         {
             var stopRecognition = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -227,6 +325,7 @@ namespace SpeechToText
 
             if (e.Result.Reason == ResultReason.RecognizedSpeech)
             {
+                Results.Add(e.Result);
                 Console.WriteLine($"RECOGNIZED: Text={e.Result.Text}");
 
             }

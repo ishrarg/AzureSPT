@@ -40,10 +40,29 @@ namespace SpeechToText
             textBox1.Text = "";
             txtLongText.Text = "";
             string filename = "harvard.wav";
-            var result = await SPTLibrary.RecognizeOneLineStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename));
-            textBox1.Text = result.Text;
+            //var result = await SPTLibrary.RecognizeOneLineStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename));
+            //textBox1.Text = result.Text;
 
-            await SPTLibrary.RecognizeLongStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename), Recognizer_Recognized);
+            var rx = await SPTLibrary.RecognitionWithPullAudioStreamAsync().ConfigureAwait(true);
+
+            //txtLongText.Text = rx.Text;
+
+            //await SPTLibrary.RecognizeLongStream("ae04421fc7ff4e6a837a8c4f53197300", "eastus", File.OpenRead(filename), Recognizer_Recognized);
+
+            Stream input = File.OpenRead(filename);
+            byte[] buffer = new byte[16 * 1024];
+            using (MemoryStream ms = new MemoryStream())
+            {
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    ms.Write(buffer, 0, read);
+                }
+                var resultX = await SPTLibrary.RecognizeLongByteArray("ae04421fc7ff4e6a837a8c4f53197300", "eastus", ms.ToArray(), Recognizer_Recognized);
+                MessageBox.Show(resultX.Text);
+
+            }
+
 
         }
     }
